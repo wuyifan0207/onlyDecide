@@ -1,0 +1,498 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ETH 交易机器人 · 简洁仪表盘</title>
+  <style>
+    :root {
+      --bg1: #0f2027; --bg2: #203a43; --bg3: #2c5364;
+      --card-bg: rgba(255,255,255,0.08);
+      --card-border: rgba(255,255,255,0.15);
+      --text: #eef4f8; --muted: #b8c4cc; --accent: #5be7a9; --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3));
+      min-height: 100vh;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 28px 18px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 22px; }
+    .brand { font-weight: 700; letter-spacing: .5px; font-size: 20px; opacity: .9; }
+    .actions { display:flex; gap: 10px; }
+    button, .btn {
+      background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border);
+      padding: 8px 14px; border-radius: 10px; cursor: pointer; backdrop-filter: blur(6px);
+      transition: all .2s ease; font-weight: 600; font-size: 14px;
+    }
+    button:hover, .btn:hover { background: rgba(255,255,255,0.14); transform: translateY(-1px); }
+    button:disabled { cursor: not-allowed; opacity: .7; }
+    .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card {
+      background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 14px;
+      backdrop-filter: blur(6px);
+    }
+    .card h3 { margin: 2px 0 10px; font-size: 16px; opacity: .92; }
+    .stat { display:flex; align-items:baseline; gap: 8px; margin: 4px 0; }
+    .stat .label { color: var(--muted); font-size: 13px; }
+    .stat .value { font-size: 18px; font-weight: 700; }
+    .pill { display:inline-block; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.10); font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace; font-size: 13px; }
+    .log-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .log-box { height: 220px; overflow:auto; white-space: pre-line; background: rgba(0,0,0,0.18); border-radius: 10px; padding: 10px; border: 1px solid rgba(255,255,255,0.12); }
+    .muted { color: var(--muted); font-size: 12px; }
+    .ok { color: var(--accent); font-weight: 700; }
+    .bad { color: var(--danger); font-weight: 700; }
+    footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 920px){ .grid{ grid-template-columns: 1fr 1fr;} }
+    @media (max-width: 640px){ .grid{ grid-template-columns: 1fr;} .log-grid{ grid-template-columns: 1fr;} }
+
+    /* 全局加载遮罩与loading动画 */
+    .overlay {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.35); z-index: 9999; backdrop-filter: blur(3px);
+    }
+    .loader { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.25); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+    .loading-wrap { display:flex; align-items:center; gap:10px; background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); padding: 10px 14px; border-radius: 12px; }
+    .loading-text { font-weight: 700; letter-spacing: .3px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 样式提示与弹窗 */
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display:flex; flex-direction:column; gap:8px; }
+    .toast { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.10); backdrop-filter: blur(6px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); font-weight: 600; min-width: 220px; }
+    .toast-info { border-color: rgba(120,180,255,0.30); }
+    .toast-success { border-color: rgba(91,231,169,0.45); }
+    .toast-error { border-color: rgba(255,107,107,0.45); }
+    .toast.fade-out { opacity: 0; transform: translateY(6px); transition: all .25s ease; }
+    .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.40); z-index: 10000; backdrop-filter: blur(3px); }
+    .modal-content { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; width: 320px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+    .modal-message { margin-bottom: 12px; }
+    .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+
+    /* 历史决策表格 */
+    table.history { width: 100%; border-collapse: collapse; }
+    table.history th, table.history td { padding: 8px; border-bottom: 1px solid var(--card-border); font-size: 13px; vertical-align: top; }
+    table.history th { text-align: left; color: var(--muted); font-weight: 700; }
+    .table-actions { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .table-actions .gap { flex: 1; }
+    .symbol-select-inline { font-size: 18px; font-weight: 700; padding: 6px 10px; border-radius: 8px; }
+
+    /* 主题变量覆盖 */
+    body.theme-dark { /* 保持默认 :root 变量 */ }
+    body.theme-light {
+      --bg1: #f2f5f8; --bg2: #e7ebf0; --bg3: #dee3e9;
+      --card-bg: rgba(0,0,0,0.04);
+      --card-border: rgba(0,0,0,0.12);
+      --text: #1a1f23; --muted: #56606a; --accent: #3aa776; --danger: #d9534f;
+    }
+    body.theme-ocean {
+      --bg1: #93b9e2; --bg2: #2d8cda; --bg3: hsl(233, 56%, 55%);
+      --card-bg: rgba(255,255,255,0.08);
+      --card-border: rgba(255,255,255,0.15);
+      --text: #eaf3ff; --muted: #9fbad6; --accent: #4bd1ff; --danger: #ff6b6b;
+    }
+    body.theme-forest {
+      --bg1: #0c1f1a; --bg2: #103c2e; --bg3: #17634a;
+      --card-bg: rgba(255,255,255,0.08);
+      --card-border: rgba(255,255,255,0.15);
+      --text: #e9f5ef; --muted: #a7c4b6; --accent: #5be79a; --danger: #ff6b6b;
+    }
+    body.theme-neon {
+      --bg1: #0b0f19; --bg2: #111a2b; --bg3: #0f1e3a;
+      --card-bg: rgba(20,20,40,0.45);
+      --card-border: rgba(120,240,255,0.18);
+      --text: #e9ffff; --muted: #9bd0d6; --accent: #6dfaff; --danger: #ff5c8a;
+    }
+    body.theme-sunset {
+      --bg1: #1a0f1f; --bg2: #2b1730; --bg3: #402040;
+      --card-bg: rgba(255,255,255,0.08);
+      --card-border: rgba(255,200,180,0.22);
+      --text: #fff3e8; --muted: #d9b6a8; --accent: #ff8f5a; --danger: #ff6b6b;
+    }
+    body.theme-midnight {
+      --bg1: #0a0a12; --bg2: #0e1220; --bg3: #121631;
+      --card-bg: rgba(255,255,255,0.06);
+      --card-border: rgba(180,180,255,0.16);
+      --text: #e8ebff; --muted: #aab0d7; --accent: #8aa8ff; --danger: #ff6b6b;
+    }
+    body.theme-aurora {
+      --bg1: #0b1b1d; --bg2: #113234; --bg3: #175153;
+      --card-bg: rgba(255,255,255,0.08);
+      --card-border: rgba(160,255,220,0.18);
+      --text: #eafff8; --muted: #a6d5c8; --accent: #74ffd1; --danger: #ff6b6b;
+    }
+    /* 进阶主题 */
+    body.theme-carbon {
+      --bg1: #0e0e12; --bg2: #15151b; --bg3: #1d1f27;
+      --card-bg: rgba(255,255,255,0.05);
+      --card-border: rgba(255,255,255,0.12);
+      --text: #e6e7eb; --muted: #8b8f97; --accent: #4fc3f7; --danger: #f06292;
+    }
+    body.theme-royal {
+      --bg1: #140a1a; --bg2: #1f0f2b; --bg3: #2a1842;
+      --card-bg: rgba(255,255,255,0.07);
+      --card-border: rgba(255,215,0,0.22);
+      --text: #f2e9ff; --muted: #cbb8e6; --accent: #b388ff; --danger: #ff6b8b;
+    }
+    body.theme-cyber {
+      --bg1: #0a0f1a; --bg2: #0c1426; --bg3: #0f1a33;
+      --card-bg: rgba(20,20,40,0.50);
+      --card-border: rgba(120,240,255,0.18);
+      --text: #eaffff; --muted: #9bd0d6; --accent: #00e5ff; --danger: #ff4081;
+    }
+    body.theme-sakura {
+      --bg1: #fff3f6; --bg2: #ffe9f0; --bg3: #ffdfe9;
+      --card-bg: rgba(0,0,0,0.04);
+      --card-border: rgba(255,105,180,0.20);
+      --text: #2b1f29; --muted: #70566c; --accent: #ff6fa8; --danger: #d9534f;
+    }
+    body.theme-slate {
+      --bg1: #0b131b; --bg2: #101a24; --bg3: #182532;
+      --card-bg: rgba(255,255,255,0.06);
+      --card-border: rgba(180,200,220,0.16);
+      --text: #e9eef5; --muted: #a2b1c2; --accent: #7cc5ff; --danger: #ff6b6b;
+    }
+
+    /* 主题切换淡入动画与模式切换动画 */
+    body.theme-animate { transition: background 300ms ease, color 300ms ease; }
+    #tradingCard.mode-flash { animation: modeFlash 600ms ease; }
+    #tradingCard.mode-sim { box-shadow: 0 0 0 2px rgba(91,231,169,0.50) inset; }
+    #tradingCard.mode-live { box-shadow: 0 0 0 2px rgba(255,107,107,0.45) inset; }
+    /* 模式按钮统一基调与激活态（浅绿色） */
+    .mode-btn { background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border); padding: 6px 10px; border-radius: 6px; }
+    .mode-btn.active { background: #dff6e5; color: #0f2318; border-color: rgba(91,231,169,0.6); }
+    @keyframes modeFlash {
+      0% { transform: scale(0.98); filter: brightness(1.0); }
+      50% { transform: scale(1.02); filter: brightness(1.06); }
+      100% { transform: scale(1.0); filter: brightness(1.0); }
+    }
+  </style>
+  <script defer src="/static/app.core.js"></script>
+  <script defer src="/static/autoRefresh.js"></script>
+  <script defer src="/static/tradingMode.js"></script>
+  <script defer src="/static/history.js"></script>
+  <script defer src="/static/logs.js"></script>
+  <script defer src="/static/backtest.js"></script>
+  <script defer src="/static/main.js"></script>
+</head>
+<body class="theme-dark" data-ai-freq="{{ ai_freq }}" data-symbol="{{ symbol }}">
+  <div class="container">
+    <div id="loadingOverlay" class="overlay">
+      <div class="loading-wrap">
+        <div class="loader"></div>
+        <div class="loading-text">加载中，请稍候...</div>
+      </div>
+    </div>
+    <header>
+      <div class="brand">
+        <select id="themeSel" class="mono symbol-select-inline" style="margin-right:10px;">
+          <option value="dark">暗色</option>
+          <option value="light">亮色</option>
+          <option value="ocean">海洋</option>
+          <option value="forest">森林</option>
+          <option value="carbon">碳黑</option>
+          <option value="royal">皇家</option>
+          <option value="cyber">赛博</option>
+          <option value="sakura">樱花</option>
+          <option value="slate">石板</option>
+        </select>
+        <span style="margin-left:10px;">交易机器人 · 仪表盘</span>
+        <span class="muted" style="margin-left:10px;">当前: <span id="currentSymbol">{{ symbol }}</span></span>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" onclick="window._refreshClick && window._refreshClick()">刷新数据</button>
+        <label class="pill">自动刷新 <input type="checkbox" id="autoRefresh" checked></label>
+      </div>
+    </header>
+
+    <!-- 交易模式（含币种下拉） -->
+    <div class="grid">
+      <div id="tradingCard" class="card" style="grid-column: 1 / -1;">
+        <h3>交易模式</h3>
+        <div class="stat">
+          <span class="label">当前模式</span>
+          <span class="value" id="tradingMode">simulation</span>
+        </div>
+        <div class="table-actions">
+        <button id="simModeBtn" class="mode-btn">模拟模式</button>
+        <button id="liveModeBtn" class="mode-btn">实盘模式</button>
+          <div class="gap"></div>
+          <label class="muted">交易对</label>
+          <select id="symbolSelect2" class="mono symbol-select-inline">
+            <option value="BTC-USDT-SWAP">BTC-USDT-SWAP</option>
+            <option value="ETH-USDT-SWAP">ETH-USDT-SWAP</option>
+            <option value="SOL-USDT-SWAP">SOL-USDT-SWAP</option>
+            <option value="BNB-USDT-SWAP">BNB-USDT-SWAP</option>
+            <option value="XRP-USDT-SWAP">XRP-USDT-SWAP</option>
+            <option value="ADA-USDT-SWAP">ADA-USDT-SWAP</option>
+            <option value="DOGE-USDT-SWAP">DOGE-USDT-SWAP</option>
+            <option value="TRX-USDT-SWAP">TRX-USDT-SWAP</option>
+            <option value="LTC-USDT-SWAP">LTC-USDT-SWAP</option>
+            <option value="LINK-USDT-SWAP">LINK-USDT-SWAP</option>
+            <option value="TON-USDT-SWAP">TON-USDT-SWAP</option>
+            <option value="APT-USDT-SWAP">APT-USDT-SWAP</option>
+            <option value="AVAX-USDT-SWAP">AVAX-USDT-SWAP</option>
+            <option value="DOT-USDT-SWAP">DOT-USDT-SWAP</option>
+            <option value="MATIC-USDT-SWAP">MATIC-USDT-SWAP</option>
+            <option value="ARB-USDT-SWAP">ARB-USDT-SWAP</option>
+            <option value="OP-USDT-SWAP">OP-USDT-SWAP</option>
+            <option value="SUI-USDT-SWAP">SUI-USDT-SWAP</option>
+            <option value="SEI-USDT-SWAP">SEI-USDT-SWAP</option>
+          </select>
+        </div>
+        <div class="table-actions" style="margin-top:6px;">
+          <div>
+            <label class="muted">启用自定义仓位</label>
+            <input type="checkbox" id="orderPosEnable">
+          </div>
+          <div>
+            <label class="muted">固定仓位(USDT)</label>
+            <input id="orderPosSize" type="number" step="0.0001" placeholder="留空使用AI建议" class="mono" style="width:140px;">
+          </div>
+          <div>
+            <label class="muted">杠杆</label>
+            <input id="orderLeverage" type="number" min="1" step="1" placeholder="例如 20" class="mono" style="width:100px;">
+          </div>
+          <div>
+            <label class="muted">刷新频率(s)</label>
+            <input id="autoFreqInput" type="number" min="1" step="1" placeholder="例如 10" class="mono" style="width:100px;">
+            <span class="muted">当前: <span id="autoFreqLabel">--</span>s</span>
+          </div>
+        </div>
+        <div class="muted" style="margin-top:6px; font-size:12px;">
+          提示：1) 启用自定义仓位后将忽略AI建议仓位；2) 杠杆用于策略计算与回测；3) 刷新频率越小，API开销越高；4) 切换交易对会同步后端并刷新历史数据。
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:14px;">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3>AI 决策</h3>
+        <div class="table-actions" style="margin-bottom:8px;">
+          <button id="aiBtn" onclick="window._aiClick && window._aiClick()">生成AI决策</button>
+          <label class="pill">允许手动生成AI <input type="checkbox" id="allowManualAI"> <span class="muted">默认关闭</span></label>
+          <div class="gap"></div>
+          <span class="muted" id="aiStatus">点击“生成AI决策”触发调用</span>
+        </div>
+        <div id="aiCardLoading" class="loading-wrap" style="display:none; margin-bottom:8px;">
+          <div class="loader"></div>
+          <div class="loading-text">生成中...</div>
+        </div>
+        <div class="stat"><span class="label">操作</span><span class="value" id="aiAction">--</span></div>
+        <div class="stat"><span class="label">信心</span><span class="pill" id="aiConf">--</span></div>
+        <div class="stat"><span class="label">理由</span><span class="mono" id="aiReason">--</span></div>
+        <div class="stat"><span class="label">建议仓位</span><span class="value" id="aiSize">--</span></div>
+        <div class="stat"><span class="label">止盈/止损</span><span class="mono" id="aiTPSL">--</span></div>
+      </div>
+    </div>
+  
+    <!-- 历史决策 -->
+    <div class="grid">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3>历史决策</h3>
+        <div class="table-actions">
+          <div>
+            <label class="muted">每页</label>
+            <select id="historyPageSize">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span class="muted" id="historyPageInfo">第 1 / 1 页（共 0 条）</span>
+          </div>
+          <div class="gap"></div>
+          <button id="historyPrev">上一页</button>
+          <button id="historyNext">下一页</button>
+          <button id="exportCsvBtn">导出CSV</button>
+          <button id="exportJsonBtn">导出JSON</button>
+          <button id="clearHistoryBtn" class="bad" onclick="window._clearHistory && window._clearHistory()">清除历史数据</button>
+        </div>
+        <div id="historyWrap" style="overflow:auto;">
+          <table class="history">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>动作</th>
+                <th>信心</th>
+            <th>仓位(USDT)</th>
+                <th>TP/SL</th>
+                <th>价格</th>
+                <th>是否开单</th>
+              </tr>
+            </thead>
+            <tbody id="historyTbody">
+              <tr><td colspan="7" class="muted">(暂无数据)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史回测 -->
+    <div class="grid" style="margin-top:14px;">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3>历史回测</h3>
+        <div class="table-actions">
+          <div>
+            <label class="muted">初始资金(USDT)</label>
+            <input id="btInitial" type="number" value="10000" class="mono" style="width:140px;">
+          </div>
+          <div>
+            <label class="muted">固定仓位(USDT)</label>
+            <input id="btPosSize" type="number" step="0.0001" placeholder="(留空使用历史建议)" class="mono" style="width:140px;">
+          </div>
+          <div>
+            <label class="muted">杠杆</label>
+            <input id="btLeverage" type="number" value="50" class="mono" style="width:100px;">
+          </div>
+          <div class="gap"></div>
+          <button id="runBtBtn">运行回测</button>
+        </div>
+        <div class="muted" id="btSummary">请先点击“运行回测”</div>
+        <!-- 默认显示统计面板（无 display:none） -->
+        <div id="btStatsPanel" style="margin-top:8px;">
+          <!-- 核心统计表格 -->
+          <div style="margin-bottom:12px; border:1px solid var(--card-border); border-radius:8px; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; background:rgba(255,255,255,0.02);">
+              <thead style="background:rgba(255,255,255,0.05);">
+                <tr>
+                  <th style="padding:8px 12px; text-align:left; border-bottom:1px solid var(--card-border);">指标</th>
+                  <th style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);">数值</th>
+                  <th style="padding:8px 12px; text-align:left; border-bottom:1px solid var(--card-border);">指标</th>
+                  <th style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);">数值</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">总单数</td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);" id="btStatTotal">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">多单数量</td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);" id="btStatLongs">--</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">盈利单数</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--accent); border-bottom:1px solid var(--card-border);" id="btStatWins">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">空单数量</td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);" id="btStatShorts">--</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">亏损单数</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--danger); border-bottom:1px solid var(--card-border);" id="btStatLosses">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">胜率</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--accent); border-bottom:1px solid var(--card-border);" id="btStatWinRate">--</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">最大回撤</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--danger); border-bottom:1px solid var(--card-border);" id="btStatDD">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">平均收益%</td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);" id="btStatAvgR">--</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">盈亏比</td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);" id="btStatPLRatio">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">最大连续亏损</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--danger); border-bottom:1px solid var(--card-border);" id="btStatMaxLoseStreak">--</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);">最大连续盈利</td>
+                  <td style="padding:8px 12px; text-align:right; color:var(--accent); border-bottom:1px solid var(--card-border);" id="btStatMaxWinStreak">--</td>
+                  <td style="padding:8px 12px; border-bottom:1px solid var(--card-border);"></td>
+                  <td style="padding:8px 12px; text-align:right; border-bottom:1px solid var(--card-border);"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- 最大盈利和最大亏损单子 -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+            <div style="border:1px solid var(--card-border); border-radius:8px; padding:12px; background:rgba(255,255,255,0.02);">
+              <div style="font-weight:bold; color:var(--accent); margin-bottom:8px;">最大盈利单</div>
+              <div style="font-size:13px;" id="btMaxProfitTrade">--</div>
+            </div>
+            <div style="border:1px solid var(--card-border); border-radius:8px; padding:12px; background:rgba(255,255,255,0.02);">
+              <div style="font-weight:bold; color:var(--danger); margin-bottom:8px;">最大亏损单</div>
+              <div style="font-size:13px;" id="btMaxLossTrade">--</div>
+            </div>
+          </div>
+          
+          <div class="stat" style="align-items:center; gap:12px; margin-top:12px;">
+            <span class="label">胜率趋势(滚动)</span>
+            <canvas id="btWinTrend" style="width:100%; height:60px; display:block; background: rgba(255,255,255,0.04); border:1px solid var(--card-border); border-radius:8px;"></canvas>
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <canvas id="btEquity" style="width:100%; height:160px; display:block; background: rgba(255,255,255,0.04); border:1px solid var(--card-border); border-radius:8px;"></canvas>
+        </div>
+        <div class="table-actions" style="margin-top:8px;">
+          <div>
+            <label class="muted">每页</label>
+            <select id="btPageSize">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+            <span class="muted" id="btPageInfo">第 1 / 1 页（共 0 条）</span>
+          </div>
+          <div class="gap"></div>
+          <button id="btPrev">上一页</button>
+          <button id="btNext">下一页</button>
+        </div>
+        <div style="overflow:auto;">
+          <table class="history">
+            <thead>
+              <tr>
+                <th>开仓时间</th>
+                <th>平仓时间</th>
+                <th>方向</th>
+                <th>入场价</th>
+                <th>出场价</th>
+            <th>仓位(USDT)</th>
+                <th>盈亏(USDT)</th>
+                <th>收益%</th>
+              </tr>
+            </thead>
+            <tbody id="btTradesTbody">
+              <tr><td colspan="8" class="muted">(尚未运行)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    
+
+    
+
+    <div class="grid" style="margin-top:14px;">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3>最新日志</h3>
+        <div class="table-actions" style="margin-bottom:8px;">
+          <div class="gap"></div>
+          <button id="clearEchoBtn" class="bad" onclick="window._clearEcho && window._clearEcho()">清空回显</button>
+          <button id="clearErrorBtn" class="bad" onclick="window._clearError && window._clearError()">清空错误</button>
+          <button id="clearLogsBtn" class="bad" onclick="window._clearLogs && window._clearLogs()">清空日志</button>
+        </div>
+        <div class="log-grid">
+          <div>
+            <div class="muted">回显（huixian.txt）</div>
+            <div class="log-box mono" id="echoLog">(暂无)</div>
+          </div>
+          <div>
+            <div class="muted">错误（baocuo.txt）</div>
+            <div class="log-box mono bad" id="errorLog">(暂无)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      简洁美观的仪表盘界面 · 切换自动刷新以减少API开销
+    </footer>
+  </div>
+
+</body>
+</html>
