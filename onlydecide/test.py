@@ -24,10 +24,10 @@ from typing import Dict, List, Optional
 import urllib.parse
 
 # ==================== 基础配置 ====================
-OKX_API_KEY = "d02541ed-7b62-483f-afb9-41249965c462"
-OKX_SECRET = "B9A86CB2DC7C64D82477EF988876ED22"
-OKX_PASSWORD = "Wuyifan666@"
-DEEPSEEK_API_KEY = "sk-bd2b4296480846f4830cd808e271415b"
+OKX_API_KEY = "xxxxxxxxxxxxxxxx"
+OKX_SECRET = "xxxxxxxxxxxxxxxxxxxxxxxxx"
+OKX_PASSWORD = "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+DEEPSEEK_API_KEY = "xxxxxxxxxxxxxxxxxxxx"
 
 # 测试模式控制变量
 jymkcs = False  # 仅做数据采集与AI决策，关闭交易模块测试
@@ -1585,4 +1585,5 @@ if __name__ == "__main__":
     write_echo(f"AI决策频率: {AI_FREQUENCY}秒")
 
     # 直接进入AI决策循环
+
     bot.run_continuously()
